@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Khata — Daily Expense Ledger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --paper:#F2ECDD;
+    --paper-line:#DCD2B4;
+    --ink:#1F2E3C;
+    --ink-soft:#5B6B78;
+    --green:#2F6F5E;
+    --green-dark:#204E42;
+    --rust:#A83B2E;
+    --gold:#B8892B;
+    --line:#C9BFA0;
+    --card:#FBF8EF;
+    --sidebar:#182530;
+    --sidebar-2:#1F2F3C;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Inter',sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    min-height:100vh;
+  }
+
+  .app{
+    display:flex;
+    min-height:100vh;
+  }
+
+  /* ---------- SIDEBAR ---------- */
+  .sidebar{
+    width:240px;
+    flex-shrink:0;
+    background:linear-gradient(180deg, var(--sidebar) 0%, var(--sidebar-2) 100%);
+    color:#EDE6D3;
+    display:flex;
+    flex-direction:column;
+    padding:28px 0 20px;
+    position:sticky;
+    top:0;
+    height:100vh;
+  }
+  .brand{
+    padding:0 24px 22px;
+    border-bottom:1px solid rgba(237,230,211,0.15);
+    margin-bottom:18px;
+  }
+  .brand .mark{
+    font-family:'Fraunces',serif;
+    font-size:30px;
+    font-weight:700;
+    color:#EDE6D3;
+    line-height:1;
+  }
+  .brand .sub{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--gold);
+    margin-top:6px;
+  }
+  .nav{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    padding:0 12px;
+  }
+  .nav-btn{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:13px 14px;
+    border:none;
+    background:transparent;
+    color:#C9C2AC;
+    font-family:'Inter',sans-serif;
+    font-size:14.5px;
+    font-weight:500;
+    text-align:left;
+    border-radius:8px;
+    cursor:pointer;
+    position:relative;
+    transition:background .15s ease,color .15s ease;
+  }
+  .nav-btn .num{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--gold);
+    opacity:.85;
+  }
+  .nav-btn:hover{ background:rgba(237,230,211,0.06); color:#EDE6D3; }
+  .nav-btn.active{
+    background:rgba(184,137,43,0.14);
+    color:#F4EEDD;
+  }
+  .nav-btn.active::before{
+    content:"";
+    position:absolute;
+    left:0; top:8px; bottom:8px;
+    width:3px;
+    background:var(--gold);
+    border-radius:2px;
+  }
+  .sidebar-foot{
+    margin-top:auto;
+    padding:16px 24px 0;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:#6E7C87;
+    border-top:1px solid rgba(237,230,211,0.1);
+  }
+
+  /* ---------- MAIN ---------- */
+  .main{
+    flex:1;
+    padding:38px 44px 60px;
+    max-width:980px;
+  }
+  .page{ display:none; }
+  .page.active{ display:block; }
+
+  .page-title{
+    font-family:'Fraunces',serif;
+    font-size:30px;
+    font-weight:600;
+    color:var(--ink);
+    margin:0 0 4px;
+  }
+  .page-sub{
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    color:var(--ink-soft);
+    margin:0 0 28px;
+  }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:26px 28px;
+    box-shadow:0 1px 0 rgba(0,0,0,.03);
+  }
+
+  label{
+    display:block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin-bottom:7px;
+  }
+  input[type=number], input[type=text], select{
+    width:100%;
+    padding:11px 13px;
+    border:1px solid var(--line);
+    border-radius:7px;
+    background:#fff;
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    color:var(--ink);
+  }
+  input:focus, select:focus{
+    outline:2px solid var(--green);
+    outline-offset:1px;
+  }
+  .field{ margin-bottom:18px; }
+  .field-row{
+    display:flex;
+    gap:16px;
+  }
+  .field-row .field{ flex:1; }
+
+  .date-display{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:15px;
+    background:#fff;
+    border:1px dashed var(--line);
+    border-radius:7px;
+    padding:11px 13px;
+    color:var(--ink);
+  }
+
+  .mode-toggle{ display:flex; gap:10px; }
+  .mode-btn{
+    flex:1;
+    padding:11px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:7px;
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:14px;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .mode-btn.selected{
+    background:var(--green);
+    border-color:var(--green);
+    color:#fff;
+  }
+
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:12px 22px;
+    border:none;
+    border-radius:7px;
+    background:var(--green);
+    color:#fff;
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:14.5px;
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  .btn:hover{ background:var(--green-dark); }
+  .btn.secondary{
+    background:transparent;
+    color:var(--green-dark);
+    border:1px solid var(--green);
+  }
+  .btn.secondary:hover{ background:rgba(47,111,94,0.08); }
+  .btn.gold{ background:var(--gold); }
+  .btn.gold:hover{ background:#96701f; }
+
+  .toast{
+    margin-top:16px;
+    padding:12px 16px;
+    border-radius:7px;
+    background:#EAF3EF;
+    border:1px solid var(--green);
+    color:var(--green-dark);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    display:none;
+  }
+
+  /* Ledger stamp header (view page) */
+  .stamp-header{
+    background:var(--sidebar);
+    color:#EDE6D3;
+    border-radius:10px;
+    padding:22px 26px;
+    margin-bottom:22px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:16px;
+  }
+  .stamp-header .month-label{
+    font-family:'Fraunces',serif;
+    font-size:24px;
+    font-weight:600;
+  }
+  .stat-chips{ display:flex; gap:22px; flex-wrap:wrap; }
+  .stat-chip .k{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--gold);
+  }
+  .stat-chip .v{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:18px;
+    font-weight:600;
+    color:#F4EEDD;
+  }
+
+  .selector-row{
+    display:flex;
+    gap:12px;
+    align-items:end;
+    margin-bottom:22px;
+    flex-wrap:wrap;
+  }
+  .selector-row .field{ margin-bottom:0; width:170px; }
+
+  /* Ledger table */
+  .ledger{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+    position:relative;
+  }
+  .ledger::before{
+    content:"";
+    display:block;
+    height:10px;
+    background-image:radial-gradient(circle, var(--paper) 3.5px, transparent 3.6px);
+    background-size:16px 10px;
+    background-position:4px 0;
+  }
+  table{ width:100%; border-collapse:collapse; }
+  thead th{
+    text-align:left;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.07em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    padding:10px 18px;
+    border-bottom:1px solid var(--line);
+  }
+  tbody td{
+    padding:12px 18px;
+    font-size:14px;
+    border-bottom:1px solid var(--paper-line);
+    font-family:'Inter',sans-serif;
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  td.amt, th.amt{ font-family:'IBM Plex Mono',monospace; text-align:right; }
+  td.rest{
+    font-family:'IBM Plex Mono',monospace;
+    text-align:right;
+    font-weight:600;
+    color:var(--green-dark);
+  }
+  .mode-pill{
+    display:inline-block;
+    padding:3px 9px;
+    border-radius:20px;
+    font-size:11.5px;
+    font-family:'IBM Plex Mono',monospace;
+    font-weight:600;
+  }
+  .mode-pill.upi{ background:#E4EEF9; color:#22577A; }
+  .mode-pill.cash{ background:#F1E9D6; color:#8A6318; }
+
+  .closing{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:18px 26px;
+    background:#EFE7CE;
+    border-top:2px solid var(--gold);
+  }
+  .closing .label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    letter-spacing:.07em;
+    text-transform:uppercase;
+    color:#7A5A16;
+  }
+  .closing .value{
+    font-family:'Fraunces',serif;
+    font-size:24px;
+    font-weight:700;
+    color:var(--green-dark);
+  }
+
+  .empty-state{
+    text-align:center;
+    padding:60px 20px;
+    color:var(--ink-soft);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:14px;
+  }
+
+  /* recent entries mini-ledger on entry page */
+  .mini-ledger{ margin-top:26px; }
+  .mini-ledger h3{
+    font-family:'Fraunces',serif;
+    font-size:16px;
+    margin:0 0 10px;
+    color:var(--ink);
+  }
+  .mini-row{
+    display:flex;
+    justify-content:space-between;
+    padding:9px 0;
+    border-bottom:1px dashed var(--line);
+    font-size:13.5px;
+  }
+  .mini-row .l{ color:var(--ink-soft); }
+  .mini-row .r{ font-family:'IBM Plex Mono',monospace; font-weight:600; }
+
+  /* Modal */
+  .modal-overlay{
+    position:fixed; inset:0;
+    background:rgba(24,37,48,0.55);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:100;
+  }
+  .modal-overlay.show{ display:flex; }
+  .modal{
+    background:var(--card);
+    border-radius:12px;
+    width:420px;
+    max-width:92vw;
+    padding:30px 30px 26px;
+    border:1px solid var(--line);
+  }
+  .modal h2{
+    font-family:'Fraunces',serif;
+    font-size:22px;
+    margin:0 0 6px;
+    color:var(--ink);
+  }
+  .modal p.desc{
+    font-size:13.5px;
+    color:var(--ink-soft);
+    margin:0 0 20px;
+  }
+
+  .storage-banner{
+    background:#F7E3D0;
+    border:1px solid var(--rust);
+    color:#7A2A1E;
+    font-size:12.5px;
+    padding:9px 14px;
+    border-radius:7px;
+    margin-bottom:20px;
+    font-family:'IBM Plex Mono',monospace;
+    display:none;
+  }
+
+  @media (max-width: 760px){
+    .app{ flex-direction:column; }
+    .sidebar{ width:100%; height:auto; position:relative; flex-direction:row; padding:16px; align-items:center; overflow-x:auto; }
+    .brand{ border:none; padding:0 16px 0 0; margin:0; }
+    .nav{ flex-direction:row; padding:0; }
+    .sidebar-foot{ display:none; }
+    .main{ padding:24px; }
+    .stamp-header{ flex-direction:column; align-items:flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="sidebar">
+    <div class="brand">
+      <div class="mark">Khata</div>
+      <div class="sub">Daily Ledger</div>
+    </div>
+    <div class="nav">
+      <button class="nav-btn active" data-page="enter"><span class="num">01</span> Enter Expense</button>
+      <button class="nav-btn" data-page="view"><span class="num">02</span> View Expense</button>
+      <button class="nav-btn" data-page="download"><span class="num">03</span> Download Month</button>
+    </div>
+    <div class="sidebar-foot">
+      Ledger data is saved automatically as you go.
+      <div id="keyDisplay" style="margin-top:10px; word-break:break-all; color:#EDE6D3; cursor:pointer;" title="Click to copy your access key">Key: —</div>
+      <button id="switchKeyBtn" class="btn secondary" style="margin-top:8px; padding:6px 10px; font-size:11px; width:100%; color:#EDE6D3; border-color:rgba(237,230,211,0.35);">Use a different key</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div id="storageBanner" class="storage-banner">Running without saved storage in this view — entries won't persist after reload.</div>
+
+    <!-- PAGE 1: ENTER EXPENSE -->
+    <div class="page active" id="page-enter">
+      <div class="page-title">Enter Expense</div>
+      <div class="page-sub">Record a new transaction. The rest amount is worked out for you.</div>
+
+      <div class="card">
+        <div class="field">
+          <label>Date</label>
+          <div class="date-display" id="todayDisplay">—</div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Amount (₹)</label>
+            <input type="number" id="amountInput" placeholder="0.00" min="0.01" step="0.01">
+          </div>
+          <div class="field">
+            <label>Type of Expense</label>
+            <input type="text" id="typeInput" placeholder="e.g. Groceries">
+          </div>
+        </div>
+        <div class="field">
+          <label>Mode of Expense</label>
+          <div class="mode-toggle">
+            <button class="mode-btn selected" id="modeUpiBtn" data-mode="UPI">UPI</button>
+            <button class="mode-btn" id="modeCashBtn" data-mode="Cash">Cash</button>
+          </div>
+        </div>
+        <button class="btn" id="saveEntryBtn">Save Entry</button>
+        <div class="toast" id="entryToast"></div>
+      </div>
+
+      <div class="mini-ledger" id="miniLedgerWrap" style="display:none;">
+        <h3>This month so far</h3>
+        <div id="miniLedgerRows"></div>
+      </div>
+    </div>
+
+    <!-- PAGE 2: VIEW EXPENSE -->
+    <div class="page" id="page-view">
+      <div class="page-title">View Expense</div>
+      <div class="page-sub">Pick a month to open its ledger.</div>
+
+      <div class="selector-row">
+        <div class="field">
+          <label>Month</label>
+          <select id="viewMonth"></select>
+        </div>
+        <div class="field">
+          <label>Year</label>
+          <select id="viewYear"></select>
+        </div>
+        <button class="btn secondary" id="viewLoadBtn">Open Ledger</button>
+      </div>
+
+      <div id="viewResult"></div>
+    </div>
+
+    <!-- PAGE 3: DOWNLOAD -->
+    <div class="page" id="page-download">
+      <div class="page-title">Download Month</div>
+      <div class="page-sub">Export a month's ledger as an Excel file.</div>
+
+      <div class="card">
+        <div class="field-row">
+          <div class="field">
+            <label>Month</label>
+            <select id="dlMonth"></select>
+          </div>
+          <div class="field">
+            <label>Year</label>
+            <select id="dlYear"></select>
+          </div>
+        </div>
+        <button class="btn gold" id="dlBtn">Download Excel</button>
+        <div class="toast" id="dlToast"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal: initial balance -->
+<div class="modal-overlay" id="initModal">
+  <div class="modal">
+    <h2>Starting balance</h2>
+    <p class="desc" id="initModalDesc">This looks like your first entry for this month. Enter what you're starting with.</p>
+    <div class="field">
+      <label>UPI (₹)</label>
+      <input type="number" id="initUpi" placeholder="0.00" min="0" step="0.01">
+    </div>
+    <div class="field">
+      <label>Cash (₹)</label>
+      <input type="number" id="initCash" placeholder="0.00" min="0" step="0.01">
+    </div>
+    <button class="btn" id="initSaveBtn">Start This Month</button>
+  </div>
+</div>
+
+<!-- Modal: access key -->
+<div class="modal-overlay" id="keyModal">
+  <div class="modal">
+    <h2>Your access key</h2>
+    <p class="desc">This key is what links your data across devices — anyone entering it can see this ledger, so keep it private. Copy it now, or paste in an existing key from another device to switch to that ledger.</p>
+    <div class="field">
+      <label>Access key</label>
+      <input type="text" id="keyInput" placeholder="paste an existing key, or leave as-is to keep yours">
+    </div>
+    <button class="btn" id="keySaveBtn">Save & Continue</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const YEAR_START = 2026;
+
+  const today = new Date();
+  const CURR_YEAR = today.getFullYear();
+  const CURR_MONTH = today.getMonth() + 1; // 1-12
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function monthKey(y,m){ return `month:${y}-${pad(m)}`; }
+  function fmtMoney(n){
+    const v = Number(n)||0;
+    return '₹' + v.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function fmtDateLong(d){
+    const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    return `${days[d.getDay()]}, ${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  // ---------- FIREBASE CONFIG ----------
+  // Paste the config object from your Firebase project here (Project settings > General > Your apps > SDK setup and config).
+  const firebaseConfig = {
+    apiKey: "AIzaSyCiUS-evgnZKL5BUPilwkhKIuzfoKnRi18",
+  authDomain: "khata7704.firebaseapp.com",
+  projectId: "khata7704",
+  storageBucket: "khata7704.firebasestorage.app",
+  messagingSenderId: "1001186391948",
+  appId: "1:1001186391948:web:2c1b025a78964bc522c8a9",
+  measurementId: "G-Y4X5B7HSBV"
+  };
+
+  let db = null;
+  let firebaseReady = false;
+  try{
+    if(firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY"){
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      firebaseReady = true;
+    }
+  }catch(e){ console.error('Firebase init failed', e); }
+
+  if(!firebaseReady){
+    document.getElementById('storageBanner').style.display = 'block';
+    document.getElementById('storageBanner').textContent =
+      'Firebase isn\'t configured yet — paste your firebaseConfig into the script to enable saving. Using temporary in-memory storage for now.';
+  }
+
+  // ---------- access key (no login — a private random ID scopes your data) ----------
+  const memStore = {};
+  let accessKey = localStorage.getItem('khata_access_key');
+  if(!accessKey){
+    accessKey = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+    localStorage.setItem('khata_access_key', accessKey);
+  }
+
+  function refreshKeyDisplay(){
+    const short = accessKey.length > 22 ? accessKey.slice(0,10) + '…' + accessKey.slice(-6) : accessKey;
+    document.getElementById('keyDisplay').textContent = 'Key: ' + short;
+  }
+  refreshKeyDisplay();
+
+  document.getElementById('keyDisplay').addEventListener('click', ()=>{
+    navigator.clipboard.writeText(accessKey).catch(()=>{});
+    const el = document.getElementById('keyDisplay');
+    const old = el.textContent;
+    el.textContent = 'Copied!';
+    setTimeout(()=>{ el.textContent = old; }, 1200);
+  });
+
+  document.getElementById('switchKeyBtn').addEventListener('click', ()=>{
+    document.getElementById('keyInput').value = accessKey;
+    document.getElementById('keyModal').classList.add('show');
+  });
+  document.getElementById('keySaveBtn').addEventListener('click', ()=>{
+    const val = document.getElementById('keyInput').value.trim();
+    if(val){
+      accessKey = val;
+      localStorage.setItem('khata_access_key', accessKey);
+      refreshKeyDisplay();
+    }
+    document.getElementById('keyModal').classList.remove('show');
+    location.reload();
+  });
+
+  // ---------- storage wrapper (Firestore, scoped under the access key) ----------
+  async function storeGet(key){
+    if(firebaseReady){
+      try{
+        const doc = await db.collection('khata_ledgers').doc(accessKey)
+          .collection('months').doc(key).get();
+        return doc.exists ? doc.data() : null;
+      }catch(e){ console.error('Firestore get failed', e); return null; }
+    }else{
+      return memStore[key] ? JSON.parse(memStore[key]) : null;
+    }
+  }
+  async function storeSet(key, obj){
+    if(firebaseReady){
+      try{
+        await db.collection('khata_ledgers').doc(accessKey)
+          .collection('months').doc(key).set(obj);
+      }catch(e){ console.error('Firestore set failed', e); }
+    }else{
+      memStore[key] = JSON.stringify(obj);
+    }
+  }
+
+  // ---------- navigation ----------
+  const navBtns = document.querySelectorAll('.nav-btn');
+  const pages = document.querySelectorAll('.page');
+  navBtns.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      navBtns.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      pages.forEach(p=>p.classList.remove('active'));
+      document.getElementById('page-' + btn.dataset.page).classList.add('active');
+    });
+  });
+
+  // ---------- populate year/month selects ----------
+  function fillSelectors(monthSel, yearSel){
+    MONTH_NAMES.forEach((name, i)=>{
+      const opt = document.createElement('option');
+      opt.value = i+1;
+      opt.textContent = name;
+      monthSel.appendChild(opt);
+    });
+    const maxYear = Math.max(CURR_YEAR, YEAR_START) + 1;
+    for(let y=YEAR_START; y<=maxYear; y++){
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      yearSel.appendChild(opt);
+    }
+    monthSel.value = CURR_MONTH;
+    yearSel.value = CURR_YEAR;
+  }
+  fillSelectors(document.getElementById('viewMonth'), document.getElementById('viewYear'));
+  fillSelectors(document.getElementById('dlMonth'), document.getElementById('dlYear'));
+
+  // ======================================================
+  // PAGE 1: ENTER EXPENSE
+  // ======================================================
+  document.getElementById('todayDisplay').textContent = fmtDateLong(today);
+
+  let selectedMode = 'UPI';
+  document.getElementById('modeUpiBtn').addEventListener('click', ()=>{
+    selectedMode = 'UPI';
+    document.getElementById('modeUpiBtn').classList.add('selected');
+    document.getElementById('modeCashBtn').classList.remove('selected');
+  });
+  document.getElementById('modeCashBtn').addEventListener('click', ()=>{
+    selectedMode = 'Cash';
+    document.getElementById('modeCashBtn').classList.add('selected');
+    document.getElementById('modeUpiBtn').classList.remove('selected');
+  });
+
+  const currKey = monthKey(CURR_YEAR, CURR_MONTH);
+  let currentRecord = null;
+
+  async function ensureCurrentMonthRecord(){
+    let rec = await storeGet(currKey);
+    if(!rec){
+      document.getElementById('initModalDesc').textContent =
+        `This is your first entry for ${MONTH_NAMES[CURR_MONTH-1]} ${CURR_YEAR}. Enter what you're starting with.`;
+      document.getElementById('initModal').classList.add('show');
+      return null;
+    }
+    currentRecord = rec;
+    renderMiniLedger();
+    return rec;
+  }
+
+  document.getElementById('initSaveBtn').addEventListener('click', async ()=>{
+    const upi = parseFloat(document.getElementById('initUpi').value) || 0;
+    const cash = parseFloat(document.getElementById('initCash').value) || 0;
+    const rec = {
+      monthLabel: `${MONTH_NAMES[CURR_MONTH-1]} ${CURR_YEAR}`,
+      initial: { upi, cash, total: upi + cash },
+      entries: []
+    };
+    await storeSet(currKey, rec);
+    currentRecord = rec;
+    document.getElementById('initModal').classList.remove('show');
+    document.getElementById('initUpi').value = '';
+    document.getElementById('initCash').value = '';
+    renderMiniLedger();
+  });
+
+  function renderMiniLedger(){
+    const wrap = document.getElementById('miniLedgerWrap');
+    const rows = document.getElementById('miniLedgerRows');
+    if(!currentRecord || currentRecord.entries.length === 0){
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = 'block';
+    rows.innerHTML = '';
+    currentRecord.entries.slice().reverse().slice(0,8).forEach(e=>{
+      const row = document.createElement('div');
+      row.className = 'mini-row';
+      row.innerHTML = `<span class="l">${e.type} · ${e.mode} · ${fmtMoney(e.amount)}</span><span class="r">${fmtMoney(e.restTotal)}</span>`;
+      rows.appendChild(row);
+    });
+  }
+
+  document.getElementById('saveEntryBtn').addEventListener('click', async ()=>{
+    if(!currentRecord){
+      await ensureCurrentMonthRecord();
+      if(!currentRecord) return; // waiting on modal
+    }
+    const amount = parseFloat(document.getElementById('amountInput').value);
+    const type = document.getElementById('typeInput').value.trim();
+    const toast = document.getElementById('entryToast');
+
+    if(!amount || amount <= 0){
+      toast.style.display='block'; toast.style.borderColor='var(--rust)'; toast.style.color='#7A2A1E'; toast.style.background='#F7E3D0';
+      toast.textContent = 'Enter a valid amount.'; return;
+    }
+    if(!type){
+      toast.style.display='block'; toast.style.borderColor='var(--rust)'; toast.style.color='#7A2A1E'; toast.style.background='#F7E3D0';
+      toast.textContent = 'Enter the type of expense.'; return;
+    }
+
+    const last = currentRecord.entries.length ? currentRecord.entries[currentRecord.entries.length-1] : null;
+    const prevUpi = last ? last.restUpi : currentRecord.initial.upi;
+    const prevCash = last ? last.restCash : currentRecord.initial.cash;
+
+    let restUpi = prevUpi, restCash = prevCash;
+    if(selectedMode === 'UPI'){ restUpi = prevUpi - amount; } else { restCash = prevCash - amount; }
+    const restTotal = restUpi + restCash;
+
+    const entry = {
+      id: Date.now(),
+      date: today.toISOString().slice(0,10),
+      dateLabel: fmtDateLong(today),
+      amount, type, mode: selectedMode,
+      restUpi, restCash, restTotal
+    };
+    currentRecord.entries.push(entry);
+    await storeSet(currKey, currentRecord);
+
+    toast.style.display='block'; toast.style.borderColor='var(--green)'; toast.style.color='var(--green-dark)'; toast.style.background='#EAF3EF';
+    toast.textContent = `Saved. Rest amount: ${fmtMoney(restTotal)}  (UPI ${fmtMoney(restUpi)} · Cash ${fmtMoney(restCash)})`;
+
+    document.getElementById('amountInput').value = '';
+    document.getElementById('typeInput').value = '';
+    renderMiniLedger();
+  });
+
+  ensureCurrentMonthRecord();
+
+  // ======================================================
+  // PAGE 2: VIEW EXPENSE
+  // ======================================================
+  document.getElementById('viewLoadBtn').addEventListener('click', async ()=>{
+    const m = parseInt(document.getElementById('viewMonth').value,10);
+    const y = parseInt(document.getElementById('viewYear').value,10);
+    const rec = await storeGet(monthKey(y,m));
+    const out = document.getElementById('viewResult');
+
+    if(!rec){
+      out.innerHTML = `<div class="ledger"><div class="empty-state">No entries recorded for ${MONTH_NAMES[m-1]} ${y}.</div></div>`;
+      return;
+    }
+
+    let rowsHtml = '';
+    rec.entries.forEach(e=>{
+      rowsHtml += `<tr>
+        <td>${e.dateLabel || e.date}</td>
+        <td class="amt">${fmtMoney(e.amount)}</td>
+        <td>${e.type}</td>
+        <td><span class="mode-pill ${e.mode.toLowerCase()}">${e.mode}</span></td>
+        <td class="rest">${fmtMoney(e.restTotal)}</td>
+      </tr>`;
+    });
+    if(rec.entries.length === 0){
+      rowsHtml = `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:30px;">No transactions logged yet this month.</td></tr>`;
+    }
+
+    const closing = rec.entries.length ? rec.entries[rec.entries.length-1].restTotal : rec.initial.total;
+
+    out.innerHTML = `
+      <div class="stamp-header">
+        <div class="month-label">${rec.monthLabel}</div>
+        <div class="stat-chips">
+          <div class="stat-chip"><div class="k">Starting UPI</div><div class="v">${fmtMoney(rec.initial.upi)}</div></div>
+          <div class="stat-chip"><div class="k">Starting Cash</div><div class="v">${fmtMoney(rec.initial.cash)}</div></div>
+          <div class="stat-chip"><div class="k">Starting Total</div><div class="v">${fmtMoney(rec.initial.total)}</div></div>
+        </div>
+      </div>
+      <div class="ledger">
+        <table>
+          <thead><tr>
+            <th>Date</th><th class="amt">Amount</th><th>Type</th><th>Mode</th><th class="amt">Rest Amount</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div class="closing">
+          <div class="label">Closing balance — carried to savings</div>
+          <div class="value">${fmtMoney(closing)}</div>
+        </div>
+      </div>
+    `;
+  });
+
+  // ======================================================
+  // PAGE 3: DOWNLOAD
+  // ======================================================
+  let sheetJsReady = typeof XLSX !== 'undefined';
+  function waitForSheetJs(){
+    return new Promise((resolve)=>{
+      if(typeof XLSX !== 'undefined'){ resolve(); return; }
+      const check = setInterval(()=>{
+        if(typeof XLSX !== 'undefined'){ clearInterval(check); resolve(); }
+      }, 150);
+      setTimeout(()=>{ clearInterval(check); resolve(); }, 8000);
+    });
+  }
+
+  document.getElementById('dlBtn').addEventListener('click', async ()=>{
+    const m = parseInt(document.getElementById('dlMonth').value,10);
+    const y = parseInt(document.getElementById('dlYear').value,10);
+    const rec = await storeGet(monthKey(y,m));
+    const toast = document.getElementById('dlToast');
+
+    if(!rec){
+      toast.style.display='block'; toast.style.borderColor='var(--rust)'; toast.style.color='#7A2A1E'; toast.style.background='#F7E3D0';
+      toast.textContent = `No data recorded for ${MONTH_NAMES[m-1]} ${y}.`;
+      return;
+    }
+
+    await waitForSheetJs();
+    if(typeof XLSX === 'undefined'){
+      toast.style.display='block'; toast.style.borderColor='var(--rust)'; toast.style.color='#7A2A1E'; toast.style.background='#F7E3D0';
+      toast.textContent = 'Could not load the Excel engine. Check your connection and try again.';
+      return;
+    }
+
+    const aoa = [];
+    aoa.push([`Expense Report — ${rec.monthLabel}`]);
+    aoa.push([]);
+    aoa.push(['Starting Balance']);
+    aoa.push(['UPI', rec.initial.upi]);
+    aoa.push(['Cash', rec.initial.cash]);
+    aoa.push(['Total', rec.initial.total]);
+    aoa.push([]);
+    aoa.push(['Date','Amount','Type of Expense','Mode','Rest Amount']);
+    rec.entries.forEach(e=>{
+      aoa.push([e.dateLabel || e.date, e.amount, e.type, e.mode, e.restTotal]);
+    });
+    aoa.push([]);
+    const closing = rec.entries.length ? rec.entries[rec.entries.length-1].restTotal : rec.initial.total;
+    aoa.push(['Closing Balance', closing]);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:26},{wch:14},{wch:22},{wch:10},{wch:14}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, MONTH_NAMES[m-1].slice(0,10));
+    XLSX.writeFile(wb, `Khata_${MONTH_NAMES[m-1]}_${y}.xlsx`);
+
+    toast.style.display='block'; toast.style.borderColor='var(--green)'; toast.style.color='var(--green-dark)'; toast.style.background='#EAF3EF';
+    toast.textContent = 'Downloaded.';
+  });
+
+})();
+</script>
+</body>
+</html>
